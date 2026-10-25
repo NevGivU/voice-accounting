@@ -104,6 +104,13 @@ main{flex:1;overflow-y:auto;padding-bottom:84px;}
   white-space:pre-wrap;word-break:break-all;
 }
 .ocr-text b{color:var(--primary);font-weight:600;}
+.ocr-retry{
+  display:none;align-items:center;justify-content:center;gap:4px;
+  margin:-4px 0 12px;padding:7px 0;width:100%;
+  background:#fff;border:1px dashed var(--line);border-radius:10px;
+  font-size:12px;color:var(--primary);font-weight:600;
+}
+.ocr-retry:active{background:#f2f4ff;}
 
 /* 打字速记 */
 .quick-input{display:flex;gap:8px;margin-top:18px;}
@@ -343,11 +350,12 @@ main{flex:1;overflow-y:auto;padding-bottom:84px;}
           <b>账单流水：</b>一张截图里有好几笔也能一次全部识别，逐条确认/跳过<br>
           <b>自动分类：</b>按商户名猜分类（转账/拼多多/深圳通等），不对可以点着改<br>
           <b>确认再存：</b>识别完会弹卡片让你改，还能看「识别到的文字」核对<br>
+          <b>重新识别：</b>觉得漏项了，点卡片里的「↻ 重新识别一次」再跑一遍，不用重新选图<br>
           <b>数据安全：</b>全部存在本机浏览器，OCR 也在本地运行不上传<br>
           <b>首次识别：</b>会下载约 20MB 中文识别模型，之后可离线识别
         </div>
       </div>
-      <div class="version">随口记 v1.2 · 数据仅保存在本机</div>
+      <div class="version">随口记 v1.3 · 数据仅保存在本机</div>
     </section>
   </main>
 
@@ -383,6 +391,7 @@ main{flex:1;overflow-y:auto;padding-bottom:84px;}
         <button class="ocr-manual" id="ocrManualBtn" type="button">太慢了，手动输入</button>
       </div>
     </div>
+    <button class="ocr-retry" id="ocrRetry" type="button" style="display:none">↻ 重新识别一次</button>
     <div class="ocr-text" id="ocrText" style="display:none"></div>
     <div class="type-toggle">
       <button id="typeExpense">支出</button>
@@ -653,6 +662,7 @@ function renderSheet(){
   const ot=$('#ocrText');
   if(cur.ocrText){ ot.style.display='block'; ot.innerHTML='<b>识别到的文字</b>（核对一下）\n'+esc(cur.ocrText.trim().slice(0,600)); }
   else{ ot.style.display='none'; ot.textContent=''; }
+  $('#ocrRetry').style.display= cur.image ? 'flex' : 'none';
   $('#ocrLoading').style.display='none';
   $('#typeExpense').className=cur.type==='expense'?'on-expense':'';
   $('#typeIncome').className=cur.type==='income'?'on-income':'';
@@ -884,50 +894,58 @@ function openPhotoConfirm(dataURL,text){
   if(!drafts.length) toast('没识别出金额，请手动输入');
   else toast('已识别金额，确认一下');
 }
+// 对已选中的截图执行识别（首次选择 / 重新识别 共用）
+async function runOcrOn(dataURL){
+  cur={type:'expense',amount:'',categoryId:'other',note:'',date:todayStr(),image:dataURL,ocrText:''};
+  editId=null;queue=[];queueIdx=0;
+  $('#cfDelete').style.display='none';
+  $('#sheetTitle').textContent='截图识别';
+  $('#queueInfo').textContent='';
+  $('#ocrText').style.display='none';
+  renderSheet();
+  $('#ocrRetry').style.display='none';
+  $('#sheetMask').classList.add('show');
+  $('#ocrLoading').style.display='flex';
+  $('#ocrStatus').textContent='正在识别…';
+  $('#ocrProgress').style.width='5%';
+  ocrBusy=true;
+  let bailed=false;
+  const finishManual=()=>{
+    if(bailed) return;
+    bailed=true; ocrBusy=false;
+    $('#ocrLoading').style.display='none';
+    $('#queueInfo').textContent='请手动填写金额';
+    cur.amount='';cur.note='截图识别';
+    renderSheet();
+    $('#cfAmount')?.focus();
+  };
+  $('#ocrManualBtn').onclick=finishManual;
+  try{
+    const text=await recognizeReceipt(dataURL);
+    if(!bailed){
+      $('#ocrLoading').style.display='none';
+      openPhotoConfirm(dataURL,text);
+    }
+  }catch(err){
+    if(!bailed) finishManual();
+  }finally{
+    ocrBusy=false;
+  }
+}
 // 拍照按钮已通过 <label for="imageInput"> 原生关联触发文件选择，无需 JS click
-$('#imageInput').addEventListener('change',async e=>{
+$('#imageInput').addEventListener('change',e=>{
   const file=e.target.files[0]; e.target.value='';
   if(!file) return;
   const reader=new FileReader();
-  reader.onload=async ()=>{
-    const dataURL=reader.result;
-    cur={type:'expense',amount:'',categoryId:'other',note:'',date:todayStr(),image:dataURL,ocrText:''};
-    editId=null;queue=[];queueIdx=0;
-    $('#cfDelete').style.display='none';
-    $('#sheetTitle').textContent='截图识别';
-    $('#queueInfo').textContent='';
-    $('#ocrText').style.display='none';
-    renderSheet();
-    $('#sheetMask').classList.add('show');
-    $('#ocrLoading').style.display='flex';
-    $('#ocrStatus').textContent='首次使用需下载识别模型，请稍候…';
-    $('#ocrProgress').style.width='5%';
-    ocrBusy=true;
-    let bailed=false;
-    const finishManual=()=>{
-      if(bailed) return;
-      bailed=true; ocrBusy=false;
-      $('#ocrLoading').style.display='none';
-      $('#queueInfo').textContent='请手动填写金额';
-      cur.amount='';cur.note='截图识别';
-      renderSheet();
-      $('#cfAmount')?.focus();
-    };
-    $('#ocrManualBtn').onclick=finishManual;
-    try{
-      const text=await recognizeReceipt(dataURL);
-      if(!bailed){
-        $('#ocrLoading').style.display='none';
-        openPhotoConfirm(dataURL,text);
-      }
-    }catch(err){
-      if(!bailed) finishManual();
-    }finally{
-      ocrBusy=false;
-    }
-  };
+  reader.onload=()=>runOcrOn(reader.result);
   reader.readAsDataURL(file);
 });
+$('#ocrRetry').onclick=()=>{
+  if(ocrBusy) return;
+  const src=cur.image;
+  if(!src||!/^data:/.test(src)) return;
+  runOcrOn(src);
+};
 
 /* ============ 语音识别 ============ */
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
