@@ -251,10 +251,10 @@ main{flex:1;overflow-y:auto;padding-bottom:84px;}
         <div class="mic-hint" id="micHint">点一下，说出你的花销</div>
         <div class="transcript" id="transcript"></div>
         <div class="photo-row">
-          <button class="photo-btn" id="photoBtn">
+          <label class="photo-btn" id="photoBtn" for="imageInput">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
             拍照 / 截图识别
-          </button>
+          </label>
         </div>
       </div>
 
@@ -758,7 +758,7 @@ function openPhotoConfirm(dataURL,text){
   if(amount==null) toast('没识别出金额，请手动输入');
   else toast('已识别金额，确认一下');
 }
-$('#photoBtn').onclick=()=>{ if(!ocrBusy) $('#imageInput').click(); };
+// 拍照按钮已通过 <label for="imageInput"> 原生关联触发文件选择，无需 JS click
 $('#imageInput').addEventListener('change',async e=>{
   const file=e.target.files[0]; e.target.value='';
   if(!file) return;
