@@ -93,6 +93,11 @@ main{flex:1;overflow-y:auto;padding-bottom:84px;}
 }
 .ocr-loading .bar{width:70%;height:6px;background:rgba(255,255,255,.25);border-radius:3px;overflow:hidden;}
 .ocr-loading .bar i{display:block;height:100%;background:#fff;width:0;transition:width .2s;}
+.ocr-manual{
+  margin-top:4px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.5);
+  color:#fff;border-radius:8px;padding:6px 14px;font-size:12px;cursor:pointer;
+}
+.ocr-manual:active{background:rgba(255,255,255,.32);}
 
 /* 打字速记 */
 .quick-input{display:flex;gap:8px;margin-top:18px;}
@@ -367,6 +372,7 @@ main{flex:1;overflow-y:auto;padding-bottom:84px;}
       <div class="ocr-loading" id="ocrLoading" style="display:none">
         <div id="ocrStatus">正在识别…</div>
         <div class="bar"><i id="ocrProgress"></i></div>
+        <button class="ocr-manual" id="ocrManualBtn" type="button">太慢了，手动输入</button>
       </div>
     </div>
     <div class="type-toggle">
@@ -695,9 +701,17 @@ function loadTesseract(){
     document.head.appendChild(s);
   });
 }
+const OCR_STATUS_MAP={
+  'loading tesseract.js core':'加载识别引擎…',
+  'loading chi_sim language traineddata':'下载中文识别模型…',
+  'loading chi_sim+eng language traineddata':'下载中英文识别模型…',
+  'initializing tesseract':'初始化识别器…',
+  'initializing api':'初始化识别器…',
+  'recognizing text':'识别文字中…',
+};
 function setOcrProgress(status,progress){
   $('#ocrLoading').style.display='flex';
-  $('#ocrStatus').textContent=status||'识别中…';
+  $('#ocrStatus').textContent= OCR_STATUS_MAP[status] || status || '识别中…';
   $('#ocrProgress').style.width=Math.round((progress||0)*100)+'%';
 }
 function extractAmountFromOCR(text){
@@ -728,12 +742,17 @@ function extractNoteFromOCR(text){
 }
 async function recognizeReceipt(dataURL){
   await loadTesseract();
-  const result=await Tesseract.recognize(dataURL,'chi_sim+eng',{
+  const rec= Tesseract.recognize(dataURL,'chi_sim+eng',{
     logger:m=>setOcrProgress(m.status,m.progress),
     workerPath:'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
     corePath:'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1/tesseract-core.wasm.js',
-    langPath:'https://tessdata.projectnaptha.com/4.0.0',
+    // 国内可访问的 tessdata 镜像（jsdelivr 托管 GitHub 仓库）
+    langPath:'https://cdn.jsdelivr.net/gh/naptha/tessdata@gh-pages/4.0.0',
   });
+  const result=await Promise.race([
+    rec,
+    new Promise((_,rej)=>setTimeout(()=>rej(new Error('识别超时')),120000)),
+  ]);
   return result.data.text||'';
 }
 
@@ -776,13 +795,22 @@ $('#imageInput').addEventListener('change',async e=>{
     $('#ocrStatus').textContent='首次使用需下载识别模型，请稍候…';
     $('#ocrProgress').style.width='5%';
     ocrBusy=true;
+    let bailed=false;
+    const finishManual=()=>{
+      if(bailed) return;
+      bailed=true; ocrBusy=false;
+      $('#ocrLoading').style.display='none';
+      $('#queueInfo').textContent='请手动填写金额';
+      cur.amount='';cur.note='截图识别';
+      renderSheet();
+      $('#cfAmount')?.focus();
+    };
+    $('#ocrManualBtn').onclick=finishManual;
     try{
       const text=await recognizeReceipt(dataURL);
-      openPhotoConfirm(dataURL,text);
+      if(!bailed) openPhotoConfirm(dataURL,text);
     }catch(err){
-      $('#ocrLoading').style.display='none';
-      closeSheet();
-      toast(err.message||'识别失败，请重试');
+      if(!bailed) finishManual();
     }finally{
       ocrBusy=false;
     }
