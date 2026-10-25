@@ -98,6 +98,12 @@ main{flex:1;overflow-y:auto;padding-bottom:84px;}
   color:#fff;border-radius:8px;padding:6px 14px;font-size:12px;cursor:pointer;
 }
 .ocr-manual:active{background:rgba(255,255,255,.32);}
+.ocr-text{
+  font-size:11px;color:#8a8a8a;line-height:1.5;background:#f7f7f7;
+  border-radius:8px;padding:8px 10px;margin-bottom:12px;max-height:88px;overflow:auto;
+  white-space:pre-wrap;word-break:break-all;
+}
+.ocr-text b{color:var(--primary);font-weight:600;}
 
 /* 打字速记 */
 .quick-input{display:flex;gap:8px;margin-top:18px;}
@@ -334,12 +340,14 @@ main{flex:1;overflow-y:auto;padding-bottom:84px;}
           <b>日期说法：</b>昨天 / 前天 / 10月20号 / 上周五<br>
           <b>收入说法：</b>「发工资了8000」「收了200红包」「报销到账300」<br>
           <b>拍照记账：</b>点「拍照/截图识别」选账单截图，自动识别金额<br>
-          <b>确认再存：</b>识别完会弹卡片让你改，不怕听错/看错<br>
+          <b>账单流水：</b>一张截图里有好几笔也能一次全部识别，逐条确认/跳过<br>
+          <b>自动分类：</b>按商户名猜分类（转账/拼多多/深圳通等），不对可以点着改<br>
+          <b>确认再存：</b>识别完会弹卡片让你改，还能看「识别到的文字」核对<br>
           <b>数据安全：</b>全部存在本机浏览器，OCR 也在本地运行不上传<br>
-          <b>首次识别：</b>会下载约 10MB 中文识别模型，之后可离线识别
+          <b>首次识别：</b>会下载约 20MB 中文识别模型，之后可离线识别
         </div>
       </div>
-      <div class="version">随口记 v1.1 · 数据仅保存在本机</div>
+      <div class="version">随口记 v1.2 · 数据仅保存在本机</div>
     </section>
   </main>
 
@@ -375,6 +383,7 @@ main{flex:1;overflow-y:auto;padding-bottom:84px;}
         <button class="ocr-manual" id="ocrManualBtn" type="button">太慢了，手动输入</button>
       </div>
     </div>
+    <div class="ocr-text" id="ocrText" style="display:none"></div>
     <div class="type-toggle">
       <button id="typeExpense">支出</button>
       <button id="typeIncome">收入</button>
@@ -419,8 +428,8 @@ function saveBudget(){localStorage.setItem(LS_B,String(budget));}
 
 /* ============ 分类 ============ */
 const EXPENSE_CATS=[
-  {id:'food',name:'餐饮',icon:'🍚',kw:['早餐','早饭','午饭','午餐','晚饭','晚餐','夜宵','外卖','吃饭','餐厅','奶茶','咖啡','饮料','水果','零食','火锅','烧烤','小吃','麦当劳','肯德基','星巴克','买菜','食堂','大餐','早餐','饭','菜']},
-  {id:'transport',name:'交通',icon:'🚗',kw:['打车','滴滴','出租','地铁','公交','加油','油费','停车','过路费','高速','高铁','火车','动车','机票','飞机','船票','单车','车费','顺风车','代驾','充电费']},
+  {id:'food',name:'餐饮',icon:'🍚',kw:['早餐','早饭','午饭','午餐','晚饭','晚餐','夜宵','外卖','吃饭','餐厅','奶茶','咖啡','饮料','水果','零食','火锅','烧烤','小吃','麦当劳','肯德基','星巴克','买菜','食堂','大餐','早餐','饭','菜','美团','饿了么','米线','面馆','米粉','快餐','包子','饺子','寿司','烘焙','甜点','蛋糕','酒楼','茶餐厅','烧烤']},
+  {id:'transport',name:'交通',icon:'🚗',kw:['打车','滴滴','出租','地铁','公交','加油','油费','停车','过路费','高速','高铁','火车','动车','机票','飞机','船票','单车','车费','顺风车','代驾','充电费','深圳通','一卡通','交通卡','羊城通','八达通','共享单车','哈啰','青桔','ETC','油卡']},
   {id:'shopping',name:'购物',icon:'🛍️',kw:['淘宝','京东','拼多多','天猫','超市','购物','衣服','裤子','鞋子','鞋','包包','化妆品','护肤','数码','手机','电脑','耳机','家电','家具','快递','买']},
   {id:'housing',name:'住房',icon:'🏠',kw:['房租','租金','水费','电费','水电','燃气','物业','宽带','网费','暖气','房贷','中介费']},
   {id:'fun',name:'娱乐',icon:'🎮',kw:['电影','游戏','充值','会员','视频','音乐','唱歌','旅游','旅行','门票','景点','展览','演出','酒吧','桌游','剧本杀','密室','KTV']},
@@ -430,6 +439,7 @@ const EXPENSE_CATS=[
   {id:'social',name:'人情',icon:'🧧',kw:['份子','礼物','请客','送礼','人情','随礼','喜酒','满月']},
   {id:'pets',name:'宠物',icon:'🐱',kw:['猫粮','狗粮','宠物','猫砂','猫罐头']},
   {id:'sports',name:'运动',icon:'🏃',kw:['健身','游泳','瑜伽','运动','球馆','羽毛球','篮球']},
+  {id:'transfer',name:'转账',icon:'💸',kw:['转账','转给','转帐','汇款','转过','打款']},
   {id:'other',name:'其他',icon:'📦',kw:[]}
 ];
 const INCOME_CATS=[
@@ -440,6 +450,7 @@ const INCOME_CATS=[
   {id:'reimburse',name:'报销',icon:'🧾',kw:['报销']},
   {id:'refund',name:'退款',icon:'↩️',kw:['退款','退货','退了']},
   {id:'hongbao',name:'红包',icon:'🧧',kw:['红包']},
+  {id:'transferin',name:'转入',icon:'💸',kw:['转账','转入','收款','收到','转来']},
   {id:'otherin',name:'其他收入',icon:'💵',kw:[]}
 ];
 function catsOf(type){return type==='income'?INCOME_CATS:EXPENSE_CATS;}
@@ -631,7 +642,7 @@ function openEdit(id){
 }
 function showCur(){
   const d=queue[queueIdx];
-  cur={type:d.type,amount:String(d.amount),categoryId:d.categoryId,note:d.note,date:d.date,image:null,ocrText:''};
+  cur={type:d.type,amount:String(d.amount),categoryId:d.categoryId,note:d.note,date:d.date,image:d.image||null,ocrText:d.ocrText||''};
   $('#queueInfo').textContent=queue.length>1?('第 '+(queueIdx+1)+' / '+queue.length+' 条'):'';
   renderSheet();
 }
@@ -639,9 +650,13 @@ function renderSheet(){
   const prev=$('#ocrPreview');
   if(cur.image){ prev.classList.add('show'); $('#ocrImg').src=cur.image; }
   else{ prev.classList.remove('show'); $('#ocrImg').removeAttribute('src'); }
+  const ot=$('#ocrText');
+  if(cur.ocrText){ ot.style.display='block'; ot.innerHTML='<b>识别到的文字</b>（核对一下）\n'+esc(cur.ocrText.trim().slice(0,600)); }
+  else{ ot.style.display='none'; ot.textContent=''; }
   $('#ocrLoading').style.display='none';
   $('#typeExpense').className=cur.type==='expense'?'on-expense':'';
   $('#typeIncome').className=cur.type==='income'?'on-income':'';
+  $('#cfCancel').textContent=(queue.length>1&&queueIdx<queue.length-1)?'跳过':'取消';
   $('#cfAmount').value=cur.amount;
   $('#cfDate').value=cur.date;
   $('#cfNote').value=cur.note;
@@ -661,7 +676,11 @@ function closeSheet(){
 
 $('#typeExpense').onclick=()=>{cur.type='expense';cur.categoryId='food';renderSheet();};
 $('#typeIncome').onclick=()=>{cur.type='income';cur.categoryId='salary';renderSheet();};
-$('#cfCancel').onclick=closeSheet;
+$('#cfCancel').onclick=()=>{
+  if(queue.length>1&&queueIdx<queue.length-1){
+    queueIdx++;showCur();toast('已跳过这条');
+  }else{closeSheet();}
+};
 $('#sheetMask').addEventListener('click',e=>{if(e.target===$('#sheetMask'))closeSheet();});
 
 $('#cfSave').onclick=()=>{
@@ -714,31 +733,117 @@ function setOcrProgress(status,progress){
   $('#ocrStatus').textContent= OCR_STATUS_MAP[status] || status || '识别中…';
   $('#ocrProgress').style.width=Math.round((progress||0)*100)+'%';
 }
-function extractAmountFromOCR(text){
-  if(!text) return null;
-  const cleaned=text.replace(/\s+/g,' ');
-  const re=/[¥￥$]?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)/g;
-  const cands=[];
+/* 金额 token：带千分位必须有逗号，否则按纯数字匹配（修复 1128.00 被截成 112 的 bug） */
+const AMOUNT_RE=/([+\-−－])?\s*[¥￥]\s*(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)|([+\-−－])\s*(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)|[¥￥]\s*(\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)/g;
+const DATETIME_RE=/(\d{4}[年\/\-])?\d{1,2}[月\/\-]\d{1,2}[日号]?|\d{1,2}:\d{2}/g;
+
+function maskDateTime(line){
+  return line.replace(DATETIME_RE,' ');
+}
+/* 从一行中找出所有金额（含正负号语义） */
+function findAmounts(line){
+  const masked=maskDateTime(line);
+  const out=[];
+  AMOUNT_RE.lastIndex=0;
   let m;
-  while((m=re.exec(cleaned))!==null){
-    const val=parseFloat(m[1].replace(/,/g,''));
-    if(!isNaN(val)&&val>0&&val<1000000){
-      const s=Math.max(0,m.index-16);
-      cands.push({val,ctx:cleaned.slice(s,m.index)});
+  while((m=AMOUNT_RE.exec(masked))!==null){
+    const raw=m[2]||m[4]||m[5];
+    if(!raw) continue;
+    const val=parseFloat(raw.replace(/,/g,''));
+    if(isNaN(val)||val<=0||val>=1000000) continue;
+    // 单个 1~2 位整数且无小数点、无符号、无货币符号 → 可能是数量/序号，跳过
+    const sign=m[1]||m[3]||'';
+    const hasCur=/[¥￥]/.test(m[0]);
+    const hasDec=/\.\d{1,2}$/.test(raw);
+    if(!sign && !hasCur && !hasDec && String(raw).length<=2) continue;
+    out.push({val,sign,hasCur,hasDec,index:m.index});
+  }
+  return out;
+}
+function guessCategory(note,type){
+  const n=(note||'');
+  if(type==='expense'&&/转账|转给|转帐|汇款|打款/.test(n)) return 'transfer';
+  if(type==='income'&&/转账|转入|收款|转来/.test(n)) return 'transferin';
+  const cats=catsOf(type);
+  let best=null,bestLen=0;
+  for(const c of cats){
+    for(const k of c.kw){
+      if(n.includes(k)&&k.length>bestLen){best=c.id;bestLen=k.length;}
     }
   }
-  if(!cands.length) return null;
-  const strongKw=['实付','实付款','合计','总计','已支付','已付款','实收款','到账','总价'];
-  const weakKw=['金额','订单','支付','应付','消费','收款','转账','付款','账单','退款','优惠后'];
-  for(const c of cands){ if(strongKw.some(k=>c.ctx.includes(k))) return c.val; }
-  for(const c of cands){ if(weakKw.some(k=>c.ctx.includes(k))) return c.val; }
-  return cands.reduce((a,b)=>a.val>b.val?a:b).val;
+  if(best) return best;
+  return type==='income'?'otherin':'other';
+}
+/* 从 OCR 文本解析出账单列表（支持一张截图里多笔流水） */
+function parseBillFromOCR(text){
+  if(!text) return [];
+  const lines=text.split(/\n/).map(l=>l.replace(/\s+/g,' ').trim()).filter(l=>l.length>0);
+  const items=[];
+  const now=new Date();
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i];
+    const amts=findAmounts(line);
+    if(!amts.length) continue;
+    // 一行多笔时取最后一个金额（账单列表右侧通常只有一个）
+    const a=amts[amts.length-1];
+    // 日期：本行 → 上一行 → 下一行
+    let dateStr2=null;
+    for(const probe of [line,lines[i+1]||'',lines[i-1]||'']){
+      const d=parseBillDate(probe,now);
+      if(d){dateStr2=d;break;}
+    }
+    // 备注：本行金额前面的文字；若为空，用上一行/下一行非日期文字
+    let note=maskDateTime(line).slice(0,a.index).replace(/[¥￥+＋]/g,'').trim();
+    if(note.length<2){
+      for(const probe of [lines[i-1]||'',lines[i+1]||'']){
+        const c=maskDateTime(probe).replace(/[¥￥+＋]/g,'').trim();
+        if(c.length>=2&&/[\u4e00-\u9fa5]/.test(c)&&!parseBillDate(probe,now)){note=c;break;}
+      }
+    }
+    note=note.replace(/^(支付宝|微信支付|微信|云闪付)\s*/g,'').trim();
+    if(!note) note='截图识别';
+    let type = a.sign==='+' ? 'income' : (a.sign ? 'expense' : (/收款|退款|到账|转入|红包/.test(note)?'income':'expense'));
+    if(a.hasCur&&type==='expense'&&/退款/.test(note)) type='income';
+    items.push({
+      type,
+      amount:Math.round(a.val*100)/100,
+      categoryId:guessCategory(note,type),
+      note:note.slice(0,18),
+      date:dateStr2||todayStr(),
+    });
+  }
+  // 去重：相邻完全相同的记录（OCR 重复输出）
+  const out=[];
+  for(const it of items){
+    const prev=out[out.length-1];
+    if(prev&&prev.amount===it.amount&&prev.note===it.note&&prev.date===it.date) continue;
+    out.push(it);
+  }
+  return out;
+}
+function parseBillDate(str,now){
+  if(!str) return null;
+  let m=str.match(/(\d{4})[年\/\-](\d{1,2})[月\/\-](\d{1,2})/);
+  if(m) return `${m[1]}-${pad(+m[2])}-${pad(+m[3])}`;
+  m=str.match(/(\d{1,2})月(\d{1,2})[日号]/);
+  if(m){
+    let y=now.getFullYear();
+    const mo=+m[1];
+    // 账单月份大于当前月 → 视为去年
+    if(mo>now.getMonth()+1) y-=1;
+    return `${y}-${pad(mo)}-${pad(+m[2])}`;
+  }
+  return null;
+}
+function extractAmountFromOCR(text){
+  const items=parseBillFromOCR(text);
+  if(items.length) return items[0].amount;
+  return null;
 }
 function extractNoteFromOCR(text){
-  if(!text) return '截图识别';
-  // 去掉金额和符号，取第一行非空中文短文本作为备注
-  const line=text.split(/\n/).map(l=>l.trim()).find(l=>l.length>=2 && l.length<=12 && /[\u4e00-\u9fa5]/.test(l) && !/^[¥￥$\d.,\s]+$/.test(l));
-  return (line||'截图识别').slice(0,18);
+  const items=parseBillFromOCR(text);
+  if(items.length) return items[0].note;
+  return '截图识别';
 }
 async function recognizeReceipt(dataURL){
   await loadTesseract();
@@ -758,23 +863,25 @@ async function recognizeReceipt(dataURL){
 
 let ocrBusy=false;
 function openPhotoConfirm(dataURL,text){
-  const amount=extractAmountFromOCR(text);
-  cur={
-    type:'expense',
-    amount: amount!=null ? String(amount) : '',
-    categoryId:'other',
-    note: extractNoteFromOCR(text),
-    date: todayStr(),
-    image:dataURL,
-    ocrText:text
-  };
-  editId=null;queue=[];queueIdx=0;
+  const items=parseBillFromOCR(text);
+  const drafts=items.map(it=>({...it,image:dataURL,ocrText:text}));
   $('#cfDelete').style.display='none';
   $('#sheetTitle').textContent='截图识别';
-  $('#queueInfo').textContent= amount!=null ? '' : '未识别出金额，请手动填写';
+  if(drafts.length>1){
+    queue=drafts;queueIdx=0;editId=null;
+    showCur();
+    $('#sheetMask').classList.add('show');
+    toast('识别到 '+drafts.length+' 笔，逐条确认');
+    return;
+  }
+  cur = drafts.length===1
+    ? {...drafts[0],amount:String(drafts[0].amount)}
+    : {type:'expense',amount:'',categoryId:'other',note:'截图识别',date:todayStr(),image:dataURL,ocrText:text};
+  editId=null;queue=[];queueIdx=0;
+  $('#queueInfo').textContent= drafts.length ? '' : '未识别出金额，请手动填写';
   renderSheet();
   $('#sheetMask').classList.add('show');
-  if(amount==null) toast('没识别出金额，请手动输入');
+  if(!drafts.length) toast('没识别出金额，请手动输入');
   else toast('已识别金额，确认一下');
 }
 // 拍照按钮已通过 <label for="imageInput"> 原生关联触发文件选择，无需 JS click
@@ -789,6 +896,7 @@ $('#imageInput').addEventListener('change',async e=>{
     $('#cfDelete').style.display='none';
     $('#sheetTitle').textContent='截图识别';
     $('#queueInfo').textContent='';
+    $('#ocrText').style.display='none';
     renderSheet();
     $('#sheetMask').classList.add('show');
     $('#ocrLoading').style.display='flex';
@@ -808,7 +916,10 @@ $('#imageInput').addEventListener('change',async e=>{
     $('#ocrManualBtn').onclick=finishManual;
     try{
       const text=await recognizeReceipt(dataURL);
-      if(!bailed) openPhotoConfirm(dataURL,text);
+      if(!bailed){
+        $('#ocrLoading').style.display='none';
+        openPhotoConfirm(dataURL,text);
+      }
     }catch(err){
       if(!bailed) finishManual();
     }finally{
