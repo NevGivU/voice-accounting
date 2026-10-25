@@ -226,6 +226,12 @@ main{flex:1;overflow-y:auto;padding-bottom:84px;}
 .sheet-btns button{flex:1;padding:13px;border-radius:12px;font-size:16px;font-weight:600;}
 .btn-cancel{background:var(--bg);color:var(--muted);}
 .btn-save{background:var(--primary);color:#fff;}
+.btn-save.sub{background:#ecefff;color:var(--primary);}
+.btn-saveall{
+  width:100%;margin-top:18px;padding:14px;border-radius:12px;
+  background:var(--primary);color:#fff;font-size:16px;font-weight:700;
+}
+.btn-saveall:active{opacity:.86;}
 .btn-del{background:#fdeceb;color:var(--expense);margin-top:10px;width:100%;padding:12px;border-radius:12px;font-size:15px;font-weight:600;}
 
 /* toast */
@@ -347,7 +353,8 @@ main{flex:1;overflow-y:auto;padding-bottom:84px;}
           <b>日期说法：</b>昨天 / 前天 / 10月20号 / 上周五<br>
           <b>收入说法：</b>「发工资了8000」「收了200红包」「报销到账300」<br>
           <b>拍照记账：</b>点「拍照/截图识别」选账单截图，自动识别金额<br>
-          <b>账单流水：</b>一张截图里有好几笔也能一次全部识别，逐条确认/跳过<br>
+          <b>账单流水：</b>一张截图里有好几笔也能一次全部识别<br>
+          <b>一键入账：</b>识别完点「全部保存 N 笔」一次记完，再去明细里改错的<br>
           <b>自动分类：</b>按商户名猜分类（转账/拼多多/深圳通等），不对可以点着改<br>
           <b>确认再存：</b>识别完会弹卡片让你改，还能看「识别到的文字」核对<br>
           <b>重新识别：</b>觉得漏项了，点卡片里的「↻ 重新识别一次」再跑一遍，不用重新选图<br>
@@ -355,7 +362,7 @@ main{flex:1;overflow-y:auto;padding-bottom:84px;}
           <b>首次识别：</b>会下载约 20MB 中文识别模型，之后可离线识别
         </div>
       </div>
-      <div class="version">随口记 v1.3 · 数据仅保存在本机</div>
+      <div class="version">随口记 v1.4 · 数据仅保存在本机</div>
     </section>
   </main>
 
@@ -405,9 +412,10 @@ main{flex:1;overflow-y:auto;padding-bottom:84px;}
     <input class="line" id="cfDate" type="date">
     <div class="field-label">备注</div>
     <input class="line" id="cfNote" maxlength="24" placeholder="一句话备注">
+    <button class="btn-saveall" id="cfSaveAll" style="display:none">全部保存</button>
     <div class="sheet-btns">
       <button class="btn-cancel" id="cfCancel">取消</button>
-      <button class="btn-save" id="cfSave">保存</button>
+      <button class="btn-save" id="cfSave">保存这条</button>
     </div>
     <button class="btn-del" id="cfDelete" style="display:none">删除这条记录</button>
   </div>
@@ -652,7 +660,7 @@ function openEdit(id){
 function showCur(){
   const d=queue[queueIdx];
   cur={type:d.type,amount:String(d.amount),categoryId:d.categoryId,note:d.note,date:d.date,image:d.image||null,ocrText:d.ocrText||''};
-  $('#queueInfo').textContent=queue.length>1?('第 '+(queueIdx+1)+' / '+queue.length+' 条'):'';
+  $('#queueInfo').textContent=queue.length>1?('识别到 '+queue.length+' 笔 · 第 '+(queueIdx+1)+'/'+queue.length):'';
   renderSheet();
 }
 function renderSheet(){
@@ -666,7 +674,12 @@ function renderSheet(){
   $('#ocrLoading').style.display='none';
   $('#typeExpense').className=cur.type==='expense'?'on-expense':'';
   $('#typeIncome').className=cur.type==='income'?'on-income':'';
+  const remain=queue.length-queueIdx;
   $('#cfCancel').textContent=(queue.length>1&&queueIdx<queue.length-1)?'跳过':'取消';
+  $('#cfSave').textContent= remain>1 ? '只保存这条' : '保存';
+  $('#cfSave').className= remain>1 ? 'btn-save sub' : 'btn-save';
+  $('#cfSaveAll').style.display= remain>1 ? 'block' : 'none';
+  $('#cfSaveAll').textContent='全部保存 '+remain+' 笔';
   $('#cfAmount').value=cur.amount;
   $('#cfDate').value=cur.date;
   $('#cfNote').value=cur.note;
@@ -717,6 +730,27 @@ $('#cfDelete').onclick=()=>{
   if(!confirm('确定删除这条记录？'))return;
   records=records.filter(x=>x.id!==editId);
   saveRecords();closeSheet();renderAll();toast('已删除');
+};
+/* 一键把整批识别结果全部记进去 */
+$('#cfSaveAll').onclick=()=>{
+  if(!queue.length) return;
+  const drafts=queue.slice(queueIdx);
+  const amtNow=parseFloat($('#cfAmount').value);
+  let saved=0;
+  drafts.forEach((d,i)=>{
+    const useForm = i===0 && amtNow>0;   // 第一条用当前表单值（用户可能改过）
+    const type = useForm ? cur.type : d.type;
+    const amount = useForm ? amtNow : d.amount;
+    if(!amount||amount<=0) return;
+    const categoryId = useForm ? cur.categoryId : d.categoryId;
+    const note = useForm ? ($('#cfNote').value.trim()||catOf(type,categoryId).name) : (d.note||catOf(type,categoryId).name);
+    const date = useForm ? ($('#cfDate').value||d.date||todayStr()) : (d.date||todayStr());
+    records.push({id:Date.now()+''+Math.floor(Math.random()*1000),type,amount:Math.round(amount*100)/100,categoryId,note,date,createdAt:Date.now()});
+    saved++;
+  });
+  saveRecords();closeSheet();renderAll();
+  if(saved){goPage('records');toast('已记 '+saved+' 笔，核对一下');}
+  else toast('没有可保存的记录');
 };
 
 /* ============ 截图 OCR 识别 ============ */
@@ -881,7 +915,7 @@ function openPhotoConfirm(dataURL,text){
     queue=drafts;queueIdx=0;editId=null;
     showCur();
     $('#sheetMask').classList.add('show');
-    toast('识别到 '+drafts.length+' 笔，逐条确认');
+    toast('识别到 '+drafts.length+' 笔，点「全部保存」一次记完');
     return;
   }
   cur = drafts.length===1
@@ -1171,6 +1205,10 @@ function renderAll(){
 }
 
 /* ============ 导航 ============ */
+function goPage(name){
+  const b=document.querySelector('.tabbar button[data-page="'+name+'"]');
+  if(b)b.click();
+}
 $$('.tabbar button').forEach(b=>{
   b.onclick=()=>{
     $$('.tabbar button').forEach(x=>x.classList.remove('active'));
