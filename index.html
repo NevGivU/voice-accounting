@@ -132,8 +132,18 @@ main{flex:1;overflow-y:auto;padding-bottom:84px;}
 .day-head{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--muted);margin:6px 4px 8px;}
 .day-head b{color:var(--text);}
 .record-row{
-  background:#fff;border-radius:12px;box-shadow:var(--shadow);
-  display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:8px;
+  position:relative;overflow:hidden;background:#fff;border-radius:12px;
+  box-shadow:var(--shadow);margin-bottom:8px;
+}
+.row-actions{
+  position:absolute;right:0;top:0;bottom:0;width:76px;
+  display:flex;align-items:stretch;background:var(--expense);
+}
+.row-actions button{width:100%;color:#fff;font-size:14px;font-weight:600;}
+.row-inner{
+  position:relative;z-index:2;background:#fff;border-radius:12px;
+  display:flex;align-items:center;gap:12px;padding:12px 14px;
+  transition:transform .2s ease;touch-action:pan-y;
 }
 .record-icon{width:38px;height:38px;border-radius:10px;background:#eef4f3;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;}
 .record-main{flex:1;min-width:0;}
@@ -358,11 +368,12 @@ main{flex:1;overflow-y:auto;padding-bottom:84px;}
           <b>自动分类：</b>按商户名猜分类（转账/拼多多/深圳通等），不对可以点着改<br>
           <b>确认再存：</b>识别完会弹卡片让你改，还能看「识别到的文字」核对<br>
           <b>重新识别：</b>觉得漏项了，点卡片里的「↻ 重新识别一次」再跑一遍，不用重新选图<br>
+          <b>左滑删除：</b>在明细/今日列表里向左滑一条，露出「删除」直接删<br>
           <b>数据安全：</b>全部存在本机浏览器，OCR 也在本地运行不上传<br>
           <b>首次识别：</b>会下载约 20MB 中文识别模型，之后可离线识别
         </div>
       </div>
-      <div class="version">随口记 v1.4 · 数据仅保存在本机</div>
+      <div class="version">随口记 v1.5 · 数据仅保存在本机</div>
     </section>
   </main>
 
@@ -1067,15 +1078,77 @@ function renderTemplates(){
 }
 
 /* ============ 渲染 ============ */
+let swipeOpenEl=null;
+function closeSwipeRow(el){
+  if(!el)return;
+  el.classList.remove('open');
+  const inner=el.querySelector('.row-inner');
+  if(inner){inner.style.transition='';inner.style.transform='';}
+  if(swipeOpenEl===el)swipeOpenEl=null;
+}
+function bindSwipeRow(el){
+  const inner=el.querySelector('.row-inner');
+  const W=76;
+  let sx=0,sy=0,base=0,cur=0,axis=null,active=false;
+  el.addEventListener('pointerdown',e=>{
+    if(e.pointerType==='mouse'&&e.button!==0)return;
+    active=true;axis=null;cur=0;
+    sx=e.clientX;sy=e.clientY;
+    base=el.classList.contains('open')?-W:0;
+    inner.style.transition='none';
+    try{el.setPointerCapture(e.pointerId);}catch(_){}
+  });
+  el.addEventListener('pointermove',e=>{
+    if(!active)return;
+    const mx=e.clientX-sx,my=e.clientY-sy;
+    if(!axis){
+      if(Math.abs(mx)<9&&Math.abs(my)<9)return;
+      axis=Math.abs(mx)>Math.abs(my)?'x':'y';
+    }
+    if(axis!=='x')return;
+    cur=Math.max(-W,Math.min(0,base+mx));
+    inner.style.transform='translateX('+cur+'px)';
+  });
+  const end=()=>{
+    if(!active)return;
+    active=false;
+    inner.style.transition='';
+    if(axis!=='x'){axis=null;inner.style.transform=base?'translateX(-'+W+'px)':'';return;}
+    axis=null;
+    if(cur<=-W*0.45){
+      if(swipeOpenEl&&swipeOpenEl!==el)closeSwipeRow(swipeOpenEl);
+      el.classList.add('open');swipeOpenEl=el;
+      inner.style.transform='translateX(-'+W+'px)';
+    }else closeSwipeRow(el);
+    cur=0;
+  };
+  el.addEventListener('pointerup',end);
+  el.addEventListener('pointercancel',end);
+}
+document.addEventListener('pointerdown',e=>{
+  if(swipeOpenEl&&!swipeOpenEl.contains(e.target))closeSwipeRow(swipeOpenEl);
+},true);
+
 function recordRow(r){
   const c=catOf(r.type,r.categoryId);
   const div=document.createElement('div');
   div.className='record-row';
-  div.innerHTML='<div class="record-icon">'+c.icon+'</div>'+
+  div.innerHTML='<div class="row-actions"><button type="button" class="row-del">删除</button></div>'+
+    '<div class="row-inner"><div class="record-icon">'+c.icon+'</div>'+
     '<div class="record-main"><div class="record-note">'+esc(r.note)+'</div>'+
     '<div class="record-cat">'+esc(c.name)+'</div></div>'+
-    '<div class="record-amount '+r.type+'">'+(r.type==='income'?'+':'-')+fmtMoney(r.amount)+'</div>';
-  div.onclick=()=>openEdit(r.id);
+    '<div class="record-amount '+r.type+'">'+(r.type==='income'?'+':'-')+fmtMoney(r.amount)+'</div></div>';
+  bindSwipeRow(div);
+  div.querySelector('.row-inner').onclick=()=>{
+    if(div.classList.contains('open')){closeSwipeRow(div);return;}
+    openEdit(r.id);
+  };
+  div.querySelector('.row-del').onclick=()=>{
+    if(!confirm('删除这条记录？'))return;
+    records=records.filter(x=>x.id!==r.id);
+    saveRecords();closeSwipeRow(div);renderAll();
+    toast('已删除');
+  };
   return div;
 }
 function sumOf(list,type){return list.filter(r=>r.type===type).reduce((s,r)=>s+r.amount,0);}
